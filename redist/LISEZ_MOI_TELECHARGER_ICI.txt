@@ -1,0 +1,14 @@
+PLACEZ ICI LES DEUX FICHIERS SUIVANTS :
+=========================================
+
+1) Python 3.12 (Windows 64-bit)
+   Téléchargez sur : https://www.python.org/downloads/windows/
+   Nom attendu     : python-3.12.10-amd64.exe
+   (Ajustez le nom dans setup.iss ligne #define PYTHON_EXE si la version diffère)
+
+2) Tesseract OCR (Windows 64-bit)
+   Téléchargez sur : https://github.com/UB-Mannheim/tesseract/wiki
+   Nom attendu     : tesseract-ocr-w64-setup-5.5.0.20241111.exe
+   (Ajustez le nom dans setup.iss ligne #define TESSERACT_EXE si la version diffère)
+
+Après avoir placé ces fichiers ici, ouvrez setup.iss avec Inno Setup et compilez.

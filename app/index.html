@@ -1,0 +1,988 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Division 2 — DPS Tracker</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Share+Tech+Mono&display=swap');
+
+  :root {
+    --bg:       #0a0c0f;
+    --panel:    #0f1318;
+    --border:   #1e2530;
+    --orange:   #e8730a;
+    --orange2:  #ff9a2e;
+    --yellow:   #f5c518;
+    --red:      #d93030;
+    --green:    #2aad5e;
+    --cyan:     #29b6d4;
+    --text:     #c8d0da;
+    --muted:    #4a5568;
+    --white:    #eef2f7;
+    --glow:     0 0 16px rgba(232,115,10,.45);
+    --glow-sm:  0 0 8px rgba(232,115,10,.3);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin:0; padding:0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 15px;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── Scanlines overlay ── */
+  body::before {
+    content:'';
+    position:fixed; inset:0; pointer-events:none; z-index:999;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent 0px, transparent 3px,
+      rgba(0,0,0,.07) 3px, rgba(0,0,0,.07) 4px
+    );
+  }
+
+  /* ── Header ── */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 24px;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(90deg, rgba(232,115,10,.08) 0%, transparent 60%);
+    position: sticky; top:0; z-index:100;
+    backdrop-filter: blur(6px);
+  }
+
+  .logo {
+    display: flex; align-items: center; gap:12px;
+  }
+  .logo-icon {
+    width:36px; height:36px;
+    background: var(--orange);
+    clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+    display:flex; align-items:center; justify-content:center;
+    font-size:18px;
+    box-shadow: var(--glow);
+    flex-shrink:0;
+  }
+  .logo h1 { font-size:20px; font-weight:700; color:var(--white); letter-spacing:.08em; }
+  .logo span { font-size:11px; color:var(--orange); letter-spacing:.15em; text-transform:uppercase; display:block; margin-top:-2px; }
+
+  .status-badge {
+    display: flex; align-items:center; gap:8px;
+    font-size:13px; font-weight:600; letter-spacing:.06em;
+    padding: 6px 14px;
+    border-radius: 2px;
+    border: 1px solid var(--muted);
+    color: var(--muted);
+    transition: all .3s;
+  }
+  .status-badge.running {
+    border-color: var(--green);
+    color: var(--green);
+    box-shadow: 0 0 10px rgba(42,173,94,.25);
+  }
+  .status-badge.error { border-color:var(--red); color:var(--red); }
+  .dot {
+    width:8px; height:8px; border-radius:50%;
+    background: currentColor;
+  }
+  .dot.pulse {
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%,100% { opacity:1; transform:scale(1); }
+    50%      { opacity:.4; transform:scale(.7); }
+  }
+
+  /* ── Layout ── */
+  .layout {
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    grid-template-rows: auto 1fr;
+    gap: 0;
+    height: calc(100vh - 61px);
+  }
+
+  /* ── Tabs ── */
+  .tabs {
+    grid-column: 1/-1;
+    display:flex;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+  }
+  .tab {
+    padding: 10px 22px;
+    cursor: pointer;
+    font-weight:600; font-size:13px; letter-spacing:.08em;
+    color: var(--muted);
+    border-bottom: 2px solid transparent;
+    transition: all .2s;
+    text-transform:uppercase;
+  }
+  .tab:hover { color:var(--text); }
+  .tab.active { color:var(--orange); border-bottom-color:var(--orange); }
+
+  /* ── Main content ── */
+  .main  { overflow-y:auto; padding:20px; }
+  .aside {
+    border-left: 1px solid var(--border);
+    overflow-y:auto;
+    background: var(--panel);
+  }
+
+  /* ── Cards ── */
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    margin-bottom:16px;
+    overflow:hidden;
+  }
+  .card-title {
+    padding:10px 16px;
+    font-size:11px; font-weight:700; letter-spacing:.15em;
+    text-transform:uppercase;
+    color: var(--muted);
+    border-bottom:1px solid var(--border);
+    display:flex; align-items:center; gap:8px;
+  }
+  .card-title::before {
+    content:'';
+    width:3px; height:14px;
+    background: var(--orange);
+    border-radius:1px;
+  }
+  .card-body { padding:16px; }
+
+  /* ── Stats grid ── */
+  .stats-grid {
+    display:grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap:12px;
+    margin-bottom:16px;
+  }
+  .stat-box {
+    background: var(--panel);
+    border:1px solid var(--border);
+    border-radius:2px;
+    padding:16px;
+    position:relative;
+    overflow:hidden;
+    transition: border-color .2s;
+  }
+  .stat-box::after {
+    content:'';
+    position:absolute; bottom:0; left:0; right:0; height:2px;
+    background: var(--orange);
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform .4s ease;
+  }
+  .stat-box.flash::after { transform:scaleX(1); animation: flash-bar .5s forwards; }
+  @keyframes flash-bar { 0%{transform:scaleX(1)} 100%{transform:scaleX(0)} }
+
+  .stat-label {
+    font-size:10px; font-weight:700; letter-spacing:.15em;
+    text-transform:uppercase; color:var(--muted);
+    margin-bottom:6px;
+  }
+  .stat-value {
+    font-size:28px; font-weight:700;
+    color:var(--orange);
+    font-family:'Share Tech Mono', monospace;
+    line-height:1;
+    transition: all .2s;
+  }
+  .stat-value.big { font-size:36px; }
+  .stat-value.yellow { color:var(--yellow); }
+  .stat-value.cyan   { color:var(--cyan); }
+  .stat-value.white  { color:var(--white); }
+
+  .stat-sub {
+    font-size:11px; color:var(--muted); margin-top:4px;
+  }
+
+  /* ── DPS Bar ── */
+  .dps-bar-wrap {
+    background: rgba(0,0,0,.4);
+    border:1px solid var(--border);
+    border-radius:1px;
+    height:8px;
+    margin-top:8px;
+    overflow:hidden;
+  }
+  .dps-bar-fill {
+    height:100%;
+    background: linear-gradient(90deg, var(--orange), var(--yellow));
+    transition: width .4s ease;
+    box-shadow: var(--glow-sm);
+  }
+
+  /* ── Combat Feed ── */
+  .feed-wrap {
+    height:340px;
+    overflow-y:auto;
+    scroll-behavior:smooth;
+    padding:8px;
+    background:rgba(0,0,0,.3);
+    border:1px solid var(--border);
+    border-radius:2px;
+    font-family:'Share Tech Mono', monospace;
+    font-size:12px;
+    line-height:1.6;
+  }
+  .feed-wrap::-webkit-scrollbar { width:4px; }
+  .feed-wrap::-webkit-scrollbar-track { background:transparent; }
+  .feed-wrap::-webkit-scrollbar-thumb { background:var(--border); }
+
+  .feed-line {
+    display:flex; gap:10px; align-items:baseline;
+    padding:2px 4px;
+    border-radius:1px;
+    animation: slideIn .15s ease;
+  }
+  @keyframes slideIn { from { opacity:0; transform:translateX(-6px); } to { opacity:1; } }
+  .feed-line:hover { background: rgba(255,255,255,.03); }
+  .feed-ts   { color:var(--muted); font-size:11px; flex-shrink:0; }
+  .feed-label{ color:var(--muted); font-size:11px; }
+  .feed-val  { color:var(--orange); font-weight:bold; }
+  .feed-val.crit { color:var(--yellow); }
+
+  /* ── Chart ── */
+  .chart-wrap {
+    position:relative; height:140px;
+    background:rgba(0,0,0,.3);
+    border:1px solid var(--border);
+  }
+  canvas#chart { width:100%!important; height:100%!important; }
+
+  /* ── Preview ── */
+  .preview-img {
+    width:100%;
+    border-radius:1px;
+    border:1px solid var(--border);
+    background:#000;
+    min-height:80px;
+    display:block;
+    image-rendering:pixelated;
+  }
+  .preview-label {
+    font-size:10px; color:var(--muted); margin-top:4px; text-align:center;
+    letter-spacing:.08em; text-transform:uppercase;
+  }
+
+  /* ── Config panel ── */
+  .cfg-section { padding:16px; border-bottom:1px solid var(--border); }
+  .cfg-section:last-child { border-bottom:none; }
+  .cfg-title { font-size:11px; font-weight:700; letter-spacing:.15em;
+    text-transform:uppercase; color:var(--muted); margin-bottom:12px; }
+
+  .cfg-row { margin-bottom:10px; }
+  label { display:block; font-size:12px; color:var(--text); margin-bottom:4px; font-weight:600; }
+
+  input[type=text], input[type=number], select {
+    width:100%;
+    background: rgba(0,0,0,.4);
+    border:1px solid var(--border);
+    border-radius:2px;
+    color:var(--white);
+    padding:7px 10px;
+    font-family:'Rajdhani', sans-serif;
+    font-size:14px;
+    outline:none;
+    transition: border-color .2s;
+    appearance:none;
+  }
+  input:focus, select:focus { border-color:var(--orange); }
+  select option { background:var(--panel); }
+
+  .range-row { display:flex; gap:10px; align-items:center; }
+  .range-row input[type=range] {
+    flex:1; appearance:none; background:var(--border);
+    height:4px; border-radius:2px;
+  }
+  .range-row input[type=range]::-webkit-slider-thumb {
+    appearance:none; width:14px; height:14px;
+    background:var(--orange); border-radius:50%; cursor:pointer;
+    box-shadow: var(--glow-sm);
+  }
+  .range-val { font-family:'Share Tech Mono'; font-size:13px; color:var(--orange); width:28px; text-align:right; }
+
+  .region-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+
+  /* ── Buttons ── */
+  .btn {
+    padding:9px 18px;
+    border-radius:2px; border:none; cursor:pointer;
+    font-family:'Rajdhani', sans-serif; font-size:14px; font-weight:700;
+    letter-spacing:.06em; text-transform:uppercase;
+    transition: all .15s;
+    display:inline-flex; align-items:center; gap:7px;
+  }
+  .btn-start {
+    background: var(--orange);
+    color:#000;
+    box-shadow: var(--glow-sm);
+  }
+  .btn-start:hover { background:var(--orange2); box-shadow:var(--glow); transform:translateY(-1px); }
+  .btn-start:active { transform:translateY(0); }
+  .btn-stop {
+    background:transparent; color:var(--red);
+    border:1px solid var(--red);
+  }
+  .btn-stop:hover { background:rgba(217,48,48,.12); }
+  .btn-secondary {
+    background:transparent; color:var(--muted);
+    border:1px solid var(--border); font-size:12px; padding:6px 12px;
+  }
+  .btn-secondary:hover { color:var(--text); border-color:var(--text); }
+  .btn-full { width:100%; justify-content:center; }
+  .btn-row { display:flex; gap:8px; flex-wrap:wrap; }
+
+  /* ── Tabs content ── */
+  .tab-content { display:none; }
+  .tab-content.active { display:block; }
+
+  /* ── Session history ── */
+  .history-table { width:100%; border-collapse:collapse; font-size:13px; }
+  .history-table th {
+    text-align:left; padding:8px 10px;
+    font-size:10px; letter-spacing:.12em; text-transform:uppercase;
+    color:var(--muted); border-bottom:1px solid var(--border);
+  }
+  .history-table td { padding:7px 10px; border-bottom:1px solid rgba(30,37,48,.6); }
+  .history-table tr:hover td { background:rgba(255,255,255,.02); }
+
+  /* ── Progress bar video ── */
+  .video-progress-wrap {
+    background:rgba(0,0,0,.4); border:1px solid var(--border);
+    border-radius:1px; height:6px; margin:8px 0; overflow:hidden;
+  }
+  .video-progress-fill {
+    height:100%; background:var(--cyan);
+    transition:width .3s; width:0%;
+  }
+
+  /* ── Tip box ── */
+  .tip {
+    background: rgba(232,115,10,.07);
+    border:1px solid rgba(232,115,10,.2);
+    border-radius:2px; padding:10px 12px;
+    font-size:12px; color:var(--text); line-height:1.5;
+    margin-top:10px;
+  }
+  .tip strong { color:var(--orange); }
+
+  /* ── Scrollbar global ── */
+  ::-webkit-scrollbar { width:5px; height:5px; }
+  ::-webkit-scrollbar-track { background:transparent; }
+  ::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+
+  /* ── Responsive ── */
+  @media (max-width:900px) {
+    .layout { grid-template-columns:1fr; }
+    .aside { border-left:none; border-top:1px solid var(--border); }
+    .stats-grid { grid-template-columns:1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<header>
+  <div class="logo">
+    <div class="logo-icon">⬡</div>
+    <div>
+      <h1>DPS TRACKER</h1>
+      <span>The Division 2</span>
+    </div>
+  </div>
+  <div class="status-badge" id="statusBadge">
+    <div class="dot" id="statusDot"></div>
+    <span id="statusText">ARRÊTÉ</span>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('live')">⚡ Live</div>
+    <div class="tab" onclick="switchTab('config')">⚙ Configuration</div>
+    <div class="tab" onclick="switchTab('about')">? Aide</div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="main">
+
+    <!-- TAB: Live -->
+    <div class="tab-content active" id="tab-live">
+
+      <!-- Controls -->
+      <div style="display:flex;gap:10px;margin-bottom:16px;align-items:center;">
+        <button class="btn btn-start" id="btnStart" onclick="startSession()">▶ Démarrer</button>
+        <button class="btn btn-stop"  id="btnStop"  onclick="stopSession()" disabled>■ Arrêter</button>
+        <button class="btn btn-secondary" onclick="exportCSV()">↓ Exporter CSV</button>
+        <div style="margin-left:auto;font-family:'Share Tech Mono';font-size:13px;color:var(--muted)" id="elapsedDisplay">00:00</div>
+      </div>
+
+      <!-- Error / info message -->
+      <div id="msgBox" style="display:none;padding:8px 12px;margin-bottom:12px;border-radius:2px;font-size:12px;"></div>
+
+      <!-- Video progress (hidden by default) -->
+      <div id="videoProgressWrap" style="display:none;margin-bottom:12px;">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:4px;">Analyse vidéo en cours…</div>
+        <div class="video-progress-wrap"><div class="video-progress-fill" id="videoProgressFill"></div></div>
+        <div id="videoProgressPct" style="font-size:11px;color:var(--cyan);text-align:right;margin-top:2px;">0%</div>
+      </div>
+
+      <!-- Stats -->
+      <div class="stats-grid">
+        <div class="stat-box" id="box-total">
+          <div class="stat-label">Dégâts totaux</div>
+          <div class="stat-value big" id="statTotal">0</div>
+          <div class="stat-sub" id="statTotalRaw">—</div>
+        </div>
+        <div class="stat-box" id="box-dps">
+          <div class="stat-label">DPS (10s)</div>
+          <div class="stat-value cyan" id="statDPS">0</div>
+          <div class="dps-bar-wrap">
+            <div class="dps-bar-fill" id="dpsBar" style="width:0%"></div>
+          </div>
+        </div>
+        <div class="stat-box" id="box-peak">
+          <div class="stat-label">Pic / coup</div>
+          <div class="stat-value yellow" id="statPeak">0</div>
+          <div class="stat-sub" id="statHits">0 coups</div>
+        </div>
+        <div class="stat-box" id="box-avg">
+          <div class="stat-label">Moyenne / coup</div>
+          <div class="stat-value white" id="statAvg">0</div>
+          <div class="stat-sub" id="statDuration">—</div>
+        </div>
+      </div>
+
+      <!-- Chart + Feed -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+        <div class="card">
+          <div class="card-title">Historique DPS</div>
+          <div class="card-body" style="padding:8px;">
+            <div class="chart-wrap"><canvas id="chart"></canvas></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">Log de combat</div>
+          <div class="card-body" style="padding:8px;">
+            <div class="feed-wrap" id="feedWrap"></div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /tab-live -->
+
+    <!-- TAB: Config -->
+    <div class="tab-content" id="tab-config">
+      <div class="card">
+        <div class="card-title">Source</div>
+        <div class="card-body">
+          <div class="cfg-row">
+            <label>Mode de capture</label>
+            <select id="cfgSource" onchange="onSourceChange()">
+              <option value="screen">🖥  Écran live (pendant une partie)</option>
+              <option value="video">🎬  Fichier vidéo (analyse enregistrement)</option>
+            </select>
+          </div>
+          <div id="videoSection" style="display:none;">
+            <div class="cfg-row">
+              <label>Chemin du fichier vidéo</label>
+              <input type="text" id="cfgVideoPath" placeholder="C:\Videos\session.mkv">
+            </div>
+            <div id="videoList" style="margin-top:6px;"></div>
+          </div>
+          <div class="tip">
+            <strong>Mode écran</strong> : requiert <code>mss</code> ou <code>PIL.ImageGrab</code>.
+            Installez avec <code>pip install mss</code>.
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Zone de lecture</div>
+        <div class="card-body">
+          <div class="cfg-row">
+            <label>Résolution du jeu</label>
+            <select id="cfgResolution" onchange="applyPreset()">
+              <option value="1920x1080">1920 × 1080 (Full HD)</option>
+              <option value="2560x1440">2560 × 1440 (2K)</option>
+              <option value="3840x2160">3840 × 2160 (4K)</option>
+              <option value="1280x720">1280 × 720</option>
+              <option value="custom">Personnalisée</option>
+            </select>
+          </div>
+          <div class="region-grid">
+            <div class="cfg-row">
+              <label>X (gauche)</label>
+              <input type="number" id="cfgX" value="0" min="0">
+            </div>
+            <div class="cfg-row">
+              <label>Y (haut)</label>
+              <input type="number" id="cfgY" value="730" min="0">
+            </div>
+            <div class="cfg-row">
+              <label>Largeur</label>
+              <input type="number" id="cfgW" value="400" min="50">
+            </div>
+            <div class="cfg-row">
+              <label>Hauteur</label>
+              <input type="number" id="cfgH" value="350" min="50">
+            </div>
+          </div>
+          <div class="tip">
+            Le log de combat se trouve en <strong>bas à gauche</strong> de l'écran.
+            La zone doit englober les lignes <code>[HH:MM]DGTS : XXXXXX</code>.
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Paramètres</div>
+        <div class="card-body">
+          <div class="cfg-row">
+            <label>Fréquence d'analyse</label>
+            <div class="range-row">
+              <input type="range" id="cfgFps" min="2" max="20" value="8"
+                     oninput="document.getElementById('cfgFpsVal').textContent=this.value">
+              <span class="range-val" id="cfgFpsVal">8</span>
+              <span style="font-size:11px;color:var(--muted)">fps</span>
+            </div>
+          </div>
+          <div class="cfg-row">
+            <label>Fenêtre DPS glissante</label>
+            <div class="range-row">
+              <input type="range" id="cfgDpsWindow" min="3" max="30" value="10"
+                     oninput="document.getElementById('cfgDpsWindowVal').textContent=this.value">
+              <span class="range-val" id="cfgDpsWindowVal">10</span>
+              <span style="font-size:11px;color:var(--muted)">s</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-start btn-full" onclick="saveConfig()">💾 Sauvegarder la configuration</button>
+      </div>
+      <div id="cfgMsg" style="margin-top:10px;font-size:12px;color:var(--green);display:none;">✓ Configuration sauvegardée</div>
+    </div><!-- /tab-config -->
+
+    <!-- TAB: About -->
+    <div class="tab-content" id="tab-about">
+      <div class="card">
+        <div class="card-title">Comment ça fonctionne</div>
+        <div class="card-body" style="line-height:1.8;">
+          <p>L'outil <strong style="color:var(--orange)">lit passivement</strong> la zone du log de combat visible à l'écran grâce à la reconnaissance optique de caractères (OCR). Il ne touche pas à la mémoire ni aux processus du jeu.</p>
+          <br>
+          <p><strong style="color:var(--yellow)">1.</strong> Configurez la zone (résolution du jeu suffisant dans 99% des cas)</p>
+          <p><strong style="color:var(--yellow)">2.</strong> Cliquez <strong>Démarrer</strong> avant ou pendant une session</p>
+          <p><strong style="color:var(--yellow)">3.</strong> Les dégâts s'accumulent en temps réel</p>
+          <p><strong style="color:var(--yellow)">4.</strong> Cliquez <strong>Arrêter</strong> pour exporter en CSV</p>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Installation (première fois)</div>
+        <div class="card-body">
+          <pre style="font-family:'Share Tech Mono';font-size:12px;color:var(--text);line-height:1.8;white-space:pre-wrap;"># Python 3.10 ou plus récent requis
+pip install flask pillow pytesseract numpy opencv-python mss
+
+# Tesseract OCR (moteur de lecture)
+# Windows : https://github.com/UB-Mannheim/tesseract/wiki
+# macOS   : brew install tesseract
+# Linux   : sudo apt install tesseract-ocr</pre>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Activer le log de combat en jeu</div>
+        <div class="card-body" style="line-height:1.8;font-size:14px;">
+          <strong style="color:var(--orange)">Échap → Paramètres → Interface</strong><br>
+          Activer : <em>"Afficher les dégâts du joueur"</em><br>
+          Ajuster la taille et la transparence selon vos préférences.
+        </div>
+      </div>
+    </div><!-- /tab-about -->
+
+  </div><!-- /main -->
+
+  <!-- ASIDE: preview + mini config -->
+  <div class="aside">
+    <div class="cfg-section">
+      <div class="cfg-title">Aperçu de la zone</div>
+      <img class="preview-img" id="previewImg" src="" alt="">
+      <div class="preview-label" id="previewLabel">En attente…</div>
+    </div>
+
+    <div class="cfg-section">
+      <div class="cfg-title">Session actuelle</div>
+      <div style="font-family:'Share Tech Mono';font-size:12px;line-height:2.1;">
+        <div style="display:flex;justify-content:space-between;">
+          <span style="color:var(--muted)">Durée</span>
+          <span id="sideElapsed" style="color:var(--white)">—</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;">
+          <span style="color:var(--muted)">Coups total</span>
+          <span id="sideHits" style="color:var(--white)">0</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;">
+          <span style="color:var(--muted)">Dégâts total</span>
+          <span id="sideTotal" style="color:var(--orange)">0</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;">
+          <span style="color:var(--muted)">DPS moyen</span>
+          <span id="sideDPS" style="color:var(--cyan)">—</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;">
+          <span style="color:var(--muted)">Pic</span>
+          <span id="sidePeak" style="color:var(--yellow)">0</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="cfg-section">
+      <div class="cfg-title">Raccourcis</div>
+      <div style="font-size:12px;line-height:2;color:var(--muted);">
+        <kbd style="background:var(--border);padding:1px 5px;border-radius:2px;color:var(--text)">F5</kbd> Démarrer / Arrêter<br>
+        <kbd style="background:var(--border);padding:1px 5px;border-radius:2px;color:var(--text)">F6</kbd> Exporter CSV<br>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /layout -->
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+let running = false;
+let pollTimer = null;
+let chartData = [];     // [{t, dps}]
+let prevTotal = 0;
+let prevHits  = 0;
+let cfgData   = {};
+
+// ── Tab switch ─────────────────────────────────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach((t,i)=>{
+    const names = ['live','config','about'];
+    t.classList.toggle('active', names[i]===name);
+  });
+  document.querySelectorAll('.tab-content').forEach(tc=>{
+    tc.classList.toggle('active', tc.id==='tab-'+name);
+  });
+  if (name === 'config') loadConfig();
+}
+
+// ── Chart (canvas, no lib) ─────────────────────────────────────────────────
+const canvas = document.getElementById('chart');
+const ctx = canvas.getContext('2d');
+let dpsHistory = [];   // last 60 values
+
+function drawChart() {
+  const w = canvas.offsetWidth;
+  const h = canvas.offsetHeight;
+  canvas.width  = w;
+  canvas.height = h;
+
+  ctx.clearRect(0,0,w,h);
+  if (dpsHistory.length < 2) return;
+
+  const max = Math.max(...dpsHistory, 1);
+  const pts = dpsHistory.map((v,i) => ({
+    x: i / (dpsHistory.length-1) * w,
+    y: h - (v / max) * (h - 8) - 4
+  }));
+
+  // Fill
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, h);
+  pts.forEach(p => ctx.lineTo(p.x, p.y));
+  ctx.lineTo(pts[pts.length-1].x, h);
+  ctx.closePath();
+  const grad = ctx.createLinearGradient(0,0,0,h);
+  grad.addColorStop(0,'rgba(232,115,10,.35)');
+  grad.addColorStop(1,'rgba(232,115,10,.02)');
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // Line
+  ctx.beginPath();
+  pts.forEach((p,i) => i===0 ? ctx.moveTo(p.x,p.y) : ctx.lineTo(p.x,p.y));
+  ctx.strokeStyle = '#e8730a';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Max label
+  const maxFmt = max >= 1e6 ? (max/1e6).toFixed(2)+'M' : max >= 1e3 ? (max/1e3).toFixed(0)+'K' : max;
+  ctx.fillStyle = 'rgba(74,85,104,.8)';
+  ctx.font = '10px Share Tech Mono, monospace';
+  ctx.fillText(maxFmt+'/s', 4, 12);
+}
+
+// ── Poll API ───────────────────────────────────────────────────────────────
+function startPoll() {
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(poll, 400);
+  poll();
+}
+
+async function poll() {
+  try {
+    const r = await fetch('/api/state');
+    const d = await r.json();
+    updateUI(d);
+  } catch(e) {}
+}
+
+function updateUI(d) {
+  // Status badge
+  const badge = document.getElementById('statusBadge');
+  const dot   = document.getElementById('statusDot');
+  const stTxt = document.getElementById('statusText');
+  if (d.running) {
+    badge.className = 'status-badge running';
+    dot.className   = 'dot pulse';
+    stTxt.textContent = 'EN COURS';
+  } else if (d.status === 'error') {
+    badge.className = 'status-badge error';
+    dot.className   = 'dot';
+    stTxt.textContent = 'ERREUR';
+  } else {
+    badge.className = 'status-badge';
+    dot.className   = 'dot';
+    stTxt.textContent = 'ARRÊTÉ';
+  }
+
+  // Buttons
+  document.getElementById('btnStart').disabled = d.running;
+  document.getElementById('btnStop').disabled  = !d.running;
+
+  // Error / info message
+  const msgBox = document.getElementById('msgBox');
+  if (d.error_msg) {
+    msgBox.style.display = 'block';
+    msgBox.style.background = d.status==='error'
+      ? 'rgba(217,48,48,.1)' : 'rgba(232,115,10,.08)';
+    msgBox.style.borderLeft = d.status==='error'
+      ? '3px solid #d93030' : '3px solid var(--orange)';
+    msgBox.style.color = d.status==='error' ? '#d93030' : 'var(--text)';
+    msgBox.textContent = d.error_msg;
+  } else {
+    msgBox.style.display = 'none';
+  }
+
+  // Stats
+  document.getElementById('statTotal').textContent  = d.total_fmt;
+  document.getElementById('statTotalRaw').textContent = d.total > 0
+    ? d.total.toLocaleString('fr-FR') : '—';
+  document.getElementById('statDPS').textContent    = d.dps_fmt + '/s';
+  document.getElementById('statPeak').textContent   = d.peak_fmt;
+  document.getElementById('statAvg').textContent    = d.avg_fmt;
+  document.getElementById('statHits').textContent   = d.hits + ' coup' + (d.hits>1?'s':'');
+  document.getElementById('dpsBar').style.width     = d.dps_bar + '%';
+
+  // Elapsed
+  const e = Math.floor(d.elapsed);
+  const mm = String(Math.floor(e/60)).padStart(2,'0');
+  const ss = String(e%60).padStart(2,'0');
+  document.getElementById('elapsedDisplay').textContent = mm+':'+ss;
+  document.getElementById('sideElapsed').textContent    = mm+':'+ss;
+  document.getElementById('statDuration').textContent   = e > 0
+    ? 'DPS moy. session: '+(d.total/e/1000).toFixed(0)+'K/s' : '—';
+
+  // Sidebar
+  document.getElementById('sideHits').textContent  = d.hits;
+  document.getElementById('sideTotal').textContent = d.total_fmt;
+  document.getElementById('sideDPS').textContent   = d.dps_fmt+'/s';
+  document.getElementById('sidePeak').textContent  = d.peak_fmt;
+
+  // Flash stat boxes on new hit
+  if (d.hits > prevHits) {
+    ['box-total','box-dps','box-avg'].forEach(id => {
+      const el = document.getElementById(id);
+      el.classList.remove('flash');
+      void el.offsetWidth;
+      el.classList.add('flash');
+    });
+  }
+  prevHits = d.hits;
+
+  // Video progress
+  const vpWrap = document.getElementById('videoProgressWrap');
+  if (d.video_progress > 0 && d.video_progress < 100) {
+    vpWrap.style.display = 'block';
+    document.getElementById('videoProgressFill').style.width = d.video_progress+'%';
+    document.getElementById('videoProgressPct').textContent = d.video_progress+'%';
+  } else {
+    vpWrap.style.display = 'none';
+  }
+
+  // Feed
+  const fw = document.getElementById('feedWrap');
+  const wasAtTop = fw.scrollTop < 5;
+  const newHTML = d.feed.map(f => `
+    <div class="feed-line">
+      <span class="feed-ts">${f.ts}</span>
+      <span class="feed-label">DGTS</span>
+      <span class="feed-val ${f.color}">${f.fmt}</span>
+    </div>`).join('');
+  if (fw.innerHTML !== newHTML) {
+    fw.innerHTML = newHTML;
+    if (wasAtTop) fw.scrollTop = 0;
+  }
+
+  // Chart DPS history
+  if (d.running || dpsHistory.length > 0) {
+    if (d.running) {
+      if (dpsHistory.length === 0 || dpsHistory[dpsHistory.length-1] !== d.dps) {
+        dpsHistory.push(d.dps);
+        if (dpsHistory.length > 80) dpsHistory.shift();
+      }
+    }
+    drawChart();
+  }
+
+  // Preview
+  if (d.preview_b64) {
+    const img = document.getElementById('previewImg');
+    img.src = 'data:image/jpeg;base64,' + d.preview_b64;
+    document.getElementById('previewLabel').textContent = 'Zone analysée (aperçu live)';
+  }
+
+  // Sync running state
+  running = d.running;
+}
+
+// ── Actions ────────────────────────────────────────────────────────────────
+async function startSession() {
+  dpsHistory = [];
+  const r = await fetch('/api/start', {method:'POST'});
+  const d = await r.json();
+  if (!d.ok) showMsg(d.msg || 'Erreur', true);
+}
+
+async function stopSession() {
+  const r = await fetch('/api/stop', {method:'POST'});
+  const d = await r.json();
+  if (d.export) showMsg('Session arrêtée · Exporté : ' + d.export);
+}
+
+async function exportCSV() {
+  const r = await fetch('/api/export');
+  const d = await r.json();
+  if (d.file) showMsg('Exporté : ' + d.file);
+}
+
+function showMsg(txt, isErr=false) {
+  const msgBox = document.getElementById('msgBox');
+  msgBox.style.display = 'block';
+  msgBox.style.background = isErr ? 'rgba(217,48,48,.1)' : 'rgba(42,173,94,.08)';
+  msgBox.style.borderLeft  = isErr ? '3px solid #d93030' : '3px solid var(--green)';
+  msgBox.style.color        = isErr ? '#d93030' : 'var(--green)';
+  msgBox.textContent = txt;
+  setTimeout(()=>msgBox.style.display='none', 4000);
+}
+
+// ── Config ─────────────────────────────────────────────────────────────────
+async function loadConfig() {
+  const r = await fetch('/api/config');
+  cfgData = await r.json();
+
+  document.getElementById('cfgSource').value     = cfgData.source || 'screen';
+  document.getElementById('cfgVideoPath').value  = cfgData.video_path || '';
+  document.getElementById('cfgFps').value        = cfgData.fps || 8;
+  document.getElementById('cfgFpsVal').textContent = cfgData.fps || 8;
+  document.getElementById('cfgDpsWindow').value  = cfgData.dps_window || 10;
+  document.getElementById('cfgDpsWindowVal').textContent = cfgData.dps_window || 10;
+
+  const res = cfgData.resolution || '1920x1080';
+  const sel = document.getElementById('cfgResolution');
+  sel.value = [...sel.options].some(o=>o.value===res) ? res : 'custom';
+
+  document.getElementById('cfgX').value = cfgData.region?.x ?? 0;
+  document.getElementById('cfgY').value = cfgData.region?.y ?? 730;
+  document.getElementById('cfgW').value = cfgData.region?.w ?? 400;
+  document.getElementById('cfgH').value = cfgData.region?.h ?? 350;
+
+  onSourceChange();
+  loadVideoList();
+}
+
+async function loadVideoList() {
+  try {
+    const r = await fetch('/api/videos');
+    const d = await r.json();
+    const el = document.getElementById('videoList');
+    if (d.files.length === 0) { el.innerHTML=''; return; }
+    el.innerHTML = '<div style="font-size:11px;color:var(--muted);margin-bottom:4px;">Vidéos détectées :</div>'
+      + d.files.map(f=>`<div style="font-size:11px;color:var(--cyan);cursor:pointer;padding:2px 0;"
+          onclick="document.getElementById('cfgVideoPath').value='${f.replace(/\\/g,'\\\\')}'">📹 ${f.split(/[\\/]/).pop()}</div>`).join('');
+  } catch(e) {}
+}
+
+function onSourceChange() {
+  const src = document.getElementById('cfgSource').value;
+  document.getElementById('videoSection').style.display = src==='video' ? 'block' : 'none';
+}
+
+function applyPreset() {
+  const sel = document.getElementById('cfgResolution');
+  const presets = {
+    '1920x1080': {x:0,y:730,w:400,h:350},
+    '2560x1440': {x:0,y:975,w:530,h:465},
+    '3840x2160': {x:0,y:1460,w:800,h:700},
+    '1280x720':  {x:0,y:490,w:265,h:230},
+  };
+  const p = presets[sel.value];
+  if (!p) return;
+  document.getElementById('cfgX').value = p.x;
+  document.getElementById('cfgY').value = p.y;
+  document.getElementById('cfgW').value = p.w;
+  document.getElementById('cfgH').value = p.h;
+}
+
+async function saveConfig() {
+  const payload = {
+    source:     document.getElementById('cfgSource').value,
+    video_path: document.getElementById('cfgVideoPath').value,
+    fps:        parseInt(document.getElementById('cfgFps').value),
+    dps_window: parseInt(document.getElementById('cfgDpsWindow').value),
+    resolution: document.getElementById('cfgResolution').value,
+    region: {
+      x: parseInt(document.getElementById('cfgX').value),
+      y: parseInt(document.getElementById('cfgY').value),
+      w: parseInt(document.getElementById('cfgW').value),
+      h: parseInt(document.getElementById('cfgH').value),
+    }
+  };
+  await fetch('/api/config', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(payload)
+  });
+  const msg = document.getElementById('cfgMsg');
+  msg.style.display = 'block';
+  setTimeout(()=>msg.style.display='none', 2500);
+}
+
+// ── Keyboard shortcuts ─────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.key === 'F5') { e.preventDefault(); running ? stopSession() : startSession(); }
+  if (e.key === 'F6') { e.preventDefault(); exportCSV(); }
+});
+
+// ── Init ───────────────────────────────────────────────────────────────────
+startPoll();
+</script>
+</body>
+</html>
